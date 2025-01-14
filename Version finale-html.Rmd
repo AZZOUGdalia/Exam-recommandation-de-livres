@@ -37,9 +37,9 @@ library(factoextra)
 ```
 
 
-## slide 2 :Étape 2 : Charger et nettoyer les données des évaluations
+## slide 2 :Charger et nettoyer les données des évaluations
 
-Action : Chargement des données d'évaluations depuis un fichier CSV.
+
 
 
 
@@ -51,12 +51,12 @@ colnames(ratings)
 
 ```
 
-## Slide
+## Slide 3 :
 Nettoyage :
 - Suppression des lignes avec des ISBN manquants.
 - Extraction des ISBN uniques pour identifier les livres évalués.
 
-Résultat :
+Résultats :
 - Problèmes de parsing détectés : corrigés.
 - Nombre d'ISBN uniques : length(unique_books).
 - Exemple d’ISBN
@@ -74,13 +74,13 @@ print(head(unique_books, 10))  # Afficher un aperçu des 10 premiers ISBN
 ```
 
 
-## slide 3 : Étape 3 : Récupérer les informations des livres via l'API Google Books
+## slide 4 : Récupérer les informations des livres via l'API Google Books
 Action :
-Interrogation de l'API Google Books pour chaque ISBN.
-Extraction des métadonnées des livres : Titre,Auteur(s),Éditeur.
+- Interrogation de l'API Google Books pour chaque ISBN.
+- Extraction des métadonnées des livres : Titre,Auteur(s),Éditeur.
 
-Résultat :
-Métadonnées récupérées pour les 100 premiers ISBN.
+Résultats :
+- Métadonnées récupérées pour les 100 premiers ISBN.
 Aperçu des résultats :
 
 ```{r}
@@ -116,7 +116,7 @@ print(head(book_info, 10))  # Aperçu des 10 premières lignes
 ```
 
 
-## Slide 4 : Étape 4- Charger et nettoyer les données des livres et utilisateurs
+## Slide 5 :
 
 *Import et chargement des données des livres et des utilisateurs.
 
@@ -156,7 +156,7 @@ colnames(users)
 *Suppression des valeurs manquantes (NA) et des doublons dans les données des livres.
 
 
-## Slide 5: Étape 5 - Préparer les données pour les recommandations
+## Slide 6: Préparer les données pour les recommandations
 
 -Jointure des données utilisateur et livre.
 -Limitation aux 1000 livres et utilisateurs les plus populaires.
@@ -199,7 +199,7 @@ rating_matrix <- as(rating_matrix, "realRatingMatrix")
 ```
 
 
-## Slide 6 : Etape 6: Créer un modèle de recommandation
+## Slide 7: Créer un modèle de recommandation
 
 Création d'un modèle de filtrage collaboratif basé sur les utilisateurs avec la méthode UBCF (User-Based Collaborative Filtering).
 
@@ -214,7 +214,7 @@ recommender <- Recommender(rating_matrix, method = "UBCF")  # User-Based Collabo
 ```
 
 
-## Slide 7 : Prédiction des recommandations pour l'utilisateur 34
+## Slide 8 : Prédiction des recommandations pour l'utilisateur 34
 Exemple avec l'utilisateur 34
 ```{r,echo=TRUE}
 # Faire une prédiction pour un utilisateur 
@@ -223,7 +223,7 @@ recommendations <- predict(recommender, rating_matrix[user_id, ], n = 5)
 
 ```
 
-## Slide 8 :
+## Slide 9 :
 ```{r}
 # Voir les recommandations
 as(recommendations, "list")
@@ -236,7 +236,7 @@ books %>% filter(ISBN %in% recommended_books) %>% select(`Book-Title`, `Book-Aut
 ```
 
 
-## Slide 9 :
+## Slide 10 :
 Exemple avec l'utilisateur 123 
 ```{r,echo=TRUE}
 # Faire une prédiction pour un utilisateur
@@ -245,7 +245,7 @@ recommendations <- predict(recommender, rating_matrix[user_id, ], n = 5)
 
 ```
 
-## Slide 10 :
+## Slide 11 :
 ```{r}
 # Voir les recommandations
 as(recommendations, "list")
@@ -256,7 +256,7 @@ books %>% filter(ISBN %in% recommended_books) %>% select(`Book-Title`, `Book-Aut
 ```
 
 
-## Slide 11 : Analyse en Composantes Principales (ACP)
+## Slide 12 : Analyse en Composantes Principales (ACP)
 
 L'ACP est une  technique de réduction de dimension qui permet de résumer un grand nombre de variables en un petit nombre de composantes principales tout en conservant le maximum d'information. 
 Elle permet également de visualiser la structure sous-jacente des données et d'identifier les variables les plus influentes.
@@ -286,7 +286,7 @@ summary(ratings_real)
 ```
 
 
-## Slide 12 : Résumé de l'Analyse en Composantes Principales (ACP)
+## Slide 13 : Résumé de l'Analyse en Composantes Principales (ACP)
 
 ```{r}
 # Préparation des données pour l'ACP
