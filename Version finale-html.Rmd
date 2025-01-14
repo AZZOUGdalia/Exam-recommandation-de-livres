@@ -1,0 +1,374 @@
+---
+title: "Projet Technique de Programmation"
+author: '"Dalia AZZOUG" , "Jeancy Candela NISHARIZE" , "Rayan HOBBALLAH"'
+date: "2025-01-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Slide 1 : Introduction
+
+Objectif :
+
+- Développer un système de recommandation personnalisé pour les livres.
+- Enrichir les informations des livres en utilisant l'API Google Books.
+- Exploiter les évaluations des utilisateurs pour construire des recommandations.
+
+Bibliothèques utilisées :
+
+- Gestion des données : dplyr, readr, tidyr.
+- API et JSON : httr, jsonlite.
+- Recommandations : recommenderlab.
+
+```{r, echo=FALSE, results='hide', warning=FALSE, message=FALSE}
+# Charger les bibliothèques nécessaires
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(readr)
+library(recommenderlab)
+library(ggplot2)
+library(tidyr)
+library(FactoMineR)
+library(factoextra)
+```
+
+
+## slide 2 :Étape 2 : Charger et nettoyer les données des évaluations
+
+Action : Chargement des données d'évaluations depuis un fichier CSV.
+
+
+
+```{r, message=FALSE,warning=FALSE}
+# Charger les données des évaluations
+ratings <- read_delim("C:/Users/cande/Downloads/ratings.csv/ratings.csv", 
+                      delim = ";", escape_double = FALSE, trim_ws = TRUE)
+colnames(ratings)
+
+```
+
+## Slide
+Nettoyage :
+- Suppression des lignes avec des ISBN manquants.
+- Extraction des ISBN uniques pour identifier les livres évalués.
+
+Résultat :
+- Problèmes de parsing détectés : corrigés.
+- Nombre d'ISBN uniques : length(unique_books).
+- Exemple d’ISBN
+```{r}
+# Nettoyer les données : supprimer les lignes avec des ISBN manquants
+ratings <- ratings %>% filter(!is.na(ISBN))
+
+# Extraire les ISBN uniques
+unique_books <- ratings %>% distinct(ISBN) %>% pull(ISBN)
+
+# Vérifier les ISBN uniques
+cat("\nNombre d'ISBN uniques :", length(unique_books), "\n")
+print(head(unique_books, 10))  # Afficher un aperçu des 10 premiers ISBN
+
+```
+
+
+## slide 3 : Étape 3 : Récupérer les informations des livres via l'API Google Books
+Action :
+Interrogation de l'API Google Books pour chaque ISBN.
+Extraction des métadonnées des livres : Titre,Auteur(s),Éditeur.
+
+Résultat :
+Métadonnées récupérées pour les 100 premiers ISBN.
+Aperçu des résultats :
+
+```{r}
+# Fonction pour interroger l'API Google Books
+get_book_info <- function(isbn) {
+  url <- paste0("https://www.googleapis.com/books/v1/volumes?q=isbn:", isbn)
+  response <- GET(url)
+  
+  # Vérification de la réponse
+  if (status_code(response) != 200) return(data.frame(ISBN = isbn, Title = NA, Author = NA, Publisher = NA))
+  
+  content <- content(response, as = "text", encoding = "UTF-8")
+  data <- fromJSON(content, simplifyVector = FALSE)
+  
+  # Vérifier si la réponse contient des informations sur le livre
+  if (!is.null(data$items) && length(data$items) > 0 && is.list(data$items[[1]])) {
+    book <- data$items[[1]]$volumeInfo
+    return(data.frame(
+      ISBN = isbn,
+      Title = if (!is.null(book$title)) book$title else NA,
+      Author = if (!is.null(book$authors)) paste(book$authors, collapse = ", ") else NA,
+      Publisher = if (!is.null(book$publisher)) book$publisher else NA
+    ))
+  }
+  return(data.frame(ISBN = isbn, Title = NA, Author = NA, Publisher = NA))
+}
+
+# Récupérer les informations pour les 100 premiers ISBN
+book_info_list <- lapply(head(unique_books, 100), get_book_info)
+book_info <- bind_rows(book_info_list) %>% filter(!is.na(Title))
+print(head(book_info, 10))  # Aperçu des 10 premières lignes
+
+```
+
+
+## Slide 4 : Étape 4- Charger et nettoyer les données des livres et utilisateurs
+
+*Import et chargement des données des livres et des utilisateurs.
+
+
+```{r,warning=FALSE,message=FALSE,results='hide'}
+books <- read_delim("C:/Users/cande/Downloads/books.csv/books.csv", 
+                    delim = ";", escape_double = FALSE, trim_ws = TRUE)
+# Vérifier les problèmes de parsing dans 'books'
+cat("\nProblèmes de parsing dans 'books' :\n")
+problems(books)
+
+# users
+users <- read_delim("C:/Users/cande/Downloads/users.csv/users.csv", 
+                    delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+# Vérifier les problèmes de parsing dans 'users'
+cat("\nProblèmes de parsing dans 'users' :\n")
+problems(users)
+
+View(books)
+
+View(users)
+
+# Supprimer les valeurs manquantes
+
+books <- books %>% drop_na()
+
+# Vérifier les doublons
+books <- books %>% distinct()
+
+
+```
+```{r }
+colnames(books)
+colnames(users)
+```
+*Suppression des valeurs manquantes (NA) et des doublons dans les données des livres.
+
+
+## Slide 5: Étape 5 - Préparer les données pour les recommandations
+
+-Jointure des données utilisateur et livre.
+-Limitation aux 1000 livres et utilisateurs les plus populaires.
+-Création d'une matrice utilisateur-livre pour les évaluations.
+```{r}
+# Joindre les évaluations avec les métadonnées des livres
+ratings_books <- ratings %>%
+  inner_join(books, by = c("ISBN" = "ISBN"))
+
+# Vérification de la taille des données
+cat("Nombre d'utilisateurs distincts : ", n_distinct(ratings_books$`User-ID`), "\n")
+cat("Nombre de livres distincts : ", n_distinct(ratings_books$ISBN), "\n")
+
+# Limiter le nombre de livres populaires (Top 1000)
+top_books <- ratings_books %>%
+  count(ISBN) %>%
+  top_n(1000, n) %>%
+  pull(ISBN)
+
+ratings_books_top <- ratings_books %>%
+  filter(ISBN %in% top_books)
+
+#  Limiter le nombre d'utilisateurs populaires (Top 1000)
+top_users <- ratings_books_top %>%
+  count(`User-ID`) %>%
+  top_n(1000, n) %>%
+  pull(`User-ID`)
+
+ratings_books_top <- ratings_books_top %>%
+  filter(`User-ID` %in% top_users)
+
+# Créer la matrice utilisateur-livre pour les évaluations
+rating_matrix <- ratings_books_top %>%
+  select(`User-ID`, ISBN, `Book-Rating`) %>%
+  pivot_wider(names_from = ISBN, values_from = `Book-Rating`)
+
+# Convertir en format sparse
+rating_matrix <- as.matrix(rating_matrix)
+rating_matrix <- as(rating_matrix, "realRatingMatrix")
+```
+
+
+## Slide 6 : Etape 6: Créer un modèle de recommandation
+
+Création d'un modèle de filtrage collaboratif basé sur les utilisateurs avec la méthode UBCF (User-Based Collaborative Filtering).
+
+Prédiction des livres recommandés pour un utilisateur spécifique.
+
+Affichage des livres recommandés pour l'utilisateur choisi.
+```{r}
+# Créer un modèle de recommandation
+recommender <- Recommender(rating_matrix, method = "UBCF")  # User-Based Collaborative Filtering
+
+
+```
+
+
+## Slide 7 : Prédiction des recommandations pour l'utilisateur 34
+Exemple avec l'utilisateur 34
+```{r,echo=TRUE}
+# Faire une prédiction pour un utilisateur 
+user_id <- 34  # Exemple d'ID utilisateur 
+recommendations <- predict(recommender, rating_matrix[user_id, ], n = 5)
+
+```
+
+## Slide 8 :
+```{r}
+# Voir les recommandations
+as(recommendations, "list")
+
+# Étape 5 : Visualiser les recommandations
+recommended_books <- as(recommendations, "list")[[1]]
+books %>% filter(ISBN %in% recommended_books) %>% select(`Book-Title`, `Book-Author`)
+
+
+```
+
+
+## Slide 9 :
+Exemple avec l'utilisateur 123 
+```{r,echo=TRUE}
+# Faire une prédiction pour un utilisateur
+user_id <- 123  # Exemple d'ID utilisateur
+recommendations <- predict(recommender, rating_matrix[user_id, ], n = 5)
+
+```
+
+## Slide 10 :
+```{r}
+# Voir les recommandations
+as(recommendations, "list")
+
+# Étape 5 : Visualiser les recommandations
+recommended_books <- as(recommendations, "list")[[1]]
+books %>% filter(ISBN %in% recommended_books) %>% select(`Book-Title`, `Book-Author`)
+```
+
+
+## Slide 11 : Analyse en Composantes Principales (ACP)
+
+L'ACP est une  technique de réduction de dimension qui permet de résumer un grand nombre de variables en un petit nombre de composantes principales tout en conservant le maximum d'information. 
+Elle permet également de visualiser la structure sous-jacente des données et d'identifier les variables les plus influentes.
+
+Objectifs :
+- Réduire la dimensionnalité des données.
+- Visualiser les relations entre les livres, les auteurs et les années de publication.
+
+```{r, results='hide',message=FALSE,warning=FALSE}
+# Création de la matrice sparse
+ratings_sparse <- sparseMatrix(
+  i = as.numeric(factor(ratings_books_top$`User-ID`)),
+  j = as.numeric(factor(ratings_books_top$ISBN)),
+  x = ratings_books_top$`Book-Rating`,
+  dimnames = list(
+    levels(factor(ratings_books_top$`User-ID`)),
+    levels(factor(ratings_books_top$ISBN))
+  )
+)
+
+# Conversion en realRatingMatrix
+ratings_real <- as(ratings_sparse, "realRatingMatrix")
+
+# Vérifiez la matrice utilisateur-livre
+print(ratings_real)
+summary(ratings_real)
+```
+
+
+## Slide 12 : Résumé de l'Analyse en Composantes Principales (ACP)
+
+```{r}
+# Préparation des données pour l'ACP
+books_cleaned <- books %>%
+  select(`Year-Of-Publication`, `Book-Author`) %>%
+  filter(!is.na(`Year-Of-Publication`), !is.na(`Book-Author`)) %>%
+  mutate(Author_Numeric = as.numeric(as.factor(`Book-Author`))) %>%
+  select(`Year-Of-Publication`, Author_Numeric)
+
+# Normalisation et ACP
+books_scaled <- scale(books_cleaned)
+pca_result <- PCA(books_scaled, graph = FALSE)
+
+# Résumé des résultats
+summary(pca_result)
+
+
+```
+### 
+
+```{r}
+# Visualisation
+fviz_screeplot(pca_result, addlabels = TRUE, ylim = c(0, 100))
+```
+###
+
+```{r}
+fviz_pca_ind(pca_result,
+             geom.ind = "point",
+             col.ind = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE)
+```
+###
+
+```{r}
+fviz_pca_var(pca_result,
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE)
+
+```
+
+###
+
+```{r,warning=FALSE,message=FALSE,results='hide'}
+# Examiner les coordonnées des individus
+individuals_coordinates <- pca_result$ind$coord
+head(individuals_coordinates)
+
+# Contributions des individus
+individuals_contributions <- pca_result$ind$contrib
+print(head(individuals_contributions))  # Vérifiez les colonnes disponibles
+
+# Accéder correctement à Dim1 (ou autre nom correspondant)
+dim1_col <- colnames(individuals_contributions)[1]  # Identifier le nom de la première dimension
+top_dim1 <- individuals_contributions[order(-individuals_contributions[, dim1_col]), ]
+head(top_dim1)  # Affiche les individus les plus influents sur Dim1
+
+
+# Ajouter des noms ou catégories aux coordonnées des individus
+individuals_info <- cbind(individuals_coordinates, Title = books$`Book-Title`)
+head(individuals_info)
+
+# Clustering K-means (2 clusters dans cet exemple)
+set.seed(123)
+clusters <- kmeans(individuals_coordinates[, 1:2], centers = 2)
+
+
+```
+
+
+```{r}
+
+# Ajouter les clusters au graphique des individus
+fviz_pca_ind(pca_result,
+             geom.ind = "point",
+             col.ind = as.factor(clusters$cluster),  # Coloration par cluster
+             palette = c("#00AFBB", "#E7B800"),
+             repel = TRUE)
+```
+
+### Conclusion
+
+En conclusion, bien que ce projet propose un système de recommandation utile, plusieurs limites doivent être prises en compte. Premièrement, la qualité des recommandations dépend fortement des métadonnées disponibles via l'API Google Books, qui peuvent être incomplètes ou erronées pour certains livres. Deuxièmement, le modèle de filtrage collaboratif utilisé peut souffrir de biais, notamment pour les utilisateurs ayant peu d’évaluations, ce qui limite la précision des recommandations. Enfin, bien que l'Analyse en Composantes Principales (ACP) offre une bonne visualisation des données, elle ne parvient pas à capturer toutes les nuances des interactions complexes entre les utilisateurs et les livres.
